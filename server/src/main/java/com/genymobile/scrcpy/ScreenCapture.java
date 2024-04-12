@@ -39,10 +39,6 @@ public class ScreenCapture extends SurfaceCapture implements Device.RotationList
             SurfaceControl.destroyDisplay(display);
             display = null;
         }
-        if (virtualDisplay != null) {
-            virtualDisplay.release();
-            virtualDisplay = null;
-        }
 
         try {
             display = createDisplay();
@@ -51,8 +47,20 @@ public class ScreenCapture extends SurfaceCapture implements Device.RotationList
         } catch (Exception surfaceControlException) {
             Rect videoRect = screenInfo.getVideoSize().toRect();
             try {
-                virtualDisplay = ServiceManager.getDisplayManager()
-                        .createVirtualDisplay("scrcpy", videoRect.width(), videoRect.height(), device.getDisplayId(), surface);
+                if (virtualDisplay == null) {
+                    // Do not release virtual display, to avoid displayId increase
+                    virtualDisplay = ServiceManager.getDisplayManager()
+                            .createVirtualDisplay("scrcpy", videoRect.width(), videoRect.height(), device.getDisplayId(), surface);
+                } else {
+                    // Density doesn't matter since this virtual display is only used for mirroring.
+                    virtualDisplay.resize(videoRect.width(), videoRect.height(), 1);
+                    virtualDisplay.setSurface(surface);
+                }
+                // 'createVirtualDisplay' will copy the configuration of the original display (including the rotation),
+                // but 'videoRect' is already rotated according to the device rotation,
+                // so we need to freeze the rotation to 0 to avoid a double rotation
+                int displayId = virtualDisplay.getDisplay().getDisplayId();
+                ServiceManager.getWindowManager().freezeRotation(displayId, 0);
                 Ln.d("Display: using DisplayManager API");
             } catch (Exception displayManagerException) {
                 Ln.e("Could not create display using SurfaceControl", surfaceControlException);
